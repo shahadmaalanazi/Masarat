@@ -183,6 +183,58 @@ def round_trip_agent(fan_request, match_info):
     )
     priority = fan_request.get("priority", "lowest_cost")
 
+    # No intercity transport is needed when the fan already lives in the
+    # match city. Keep this as a real TravelAgent response in the ACL log.
+    if origin == destination:
+        outbound = {
+            "origin": origin,
+            "destination": destination,
+            "travel_date": departure_date,
+            "mode": "Local",
+            "provider": "No intercity travel required",
+            "simulated_oneway_cost_sar": 0.0,
+            "comfort_score": 5,
+        }
+        inbound = {
+            **outbound,
+            "travel_date": return_date,
+        }
+        option = {
+            "outbound": outbound,
+            "inbound": inbound,
+            "transport_cost_sar": 0.0,
+            "comfort_score": 5,
+            "data_type": "LOCAL_NO_TRAVEL_REQUIRED",
+        }
+        messages = [create_acl_message(
+            "CoordinatorAgent",
+            "TravelAgent",
+            "CFP" if fan_request.get("budget_review_round") else "REQUEST",
+            {
+                "origin": origin,
+                "destination": destination,
+                "travel_date": departure_date,
+                "priority": priority,
+                "transport_budget_sar": budget,
+            },
+            fan_request["fan_id"],
+        ), create_acl_message(
+            "TravelAgent",
+            "CoordinatorAgent",
+            "PROPOSE",
+            {"status": "NO_INTERCITY_TRAVEL_REQUIRED", "round_trip": option},
+            fan_request["fan_id"],
+        )]
+        return {
+            "status": "NO_INTERCITY_TRAVEL_REQUIRED",
+            "recommended_option": option,
+            "round_trip_options": [option],
+            "transport_cost_sar": 0.0,
+            "data_type": "LOCAL_NO_TRAVEL_REQUIRED",
+            "llm_used": False,
+            "acl_messages": messages,
+        }
+
     outbound = travel_agent(
         fan_request, match_info, request_type="CFP"
     )

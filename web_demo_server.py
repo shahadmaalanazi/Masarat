@@ -139,6 +139,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
             match_id = str(request.get("match_id", "")).strip().upper()
             budget = int(request.get("budget_sar", 0))
             priority = str(request.get("priority", "lowest_cost"))
+            budget_review = bool(request.get("budget_review", False))
             allowed_origins = {route["origin"] for route in TRANSPORT_OPTIONS}
             matches = {m["match_id"] for m in list_matches()}
             if origin not in allowed_origins or match_id not in matches or priority not in {"lowest_cost", "comfort"} or not 300 <= budget <= 100_000:
@@ -151,7 +152,11 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 "preferred_match_ids": [match_id],
                 "priority": priority,
             }
-            result = CoordinatorAgent().coordinate(fan_request, selector=DemoPlanSelector())
+            result = CoordinatorAgent().coordinate(
+                fan_request,
+                selector=DemoPlanSelector(),
+                review_budget=budget_review,
+            )
             match = next(m for m in list_matches() if m["match_id"] == match_id)
             plans = result.get("proposed_plans", [])
             messages = result.get("message_log", [])
@@ -171,6 +176,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     "ticket_price_type": "ESTIMATED_SIMULATED",
                 },
                 "plans": plans,
+                "budget_review": result.get("budget_review"),
                 "messages": messages,
                 "pending_reasons": result.get("pending_reasons", []),
                 "agent_results": result.get("agent_results", []),

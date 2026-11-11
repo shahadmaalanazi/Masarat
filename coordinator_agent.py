@@ -324,7 +324,13 @@ class CoordinatorAgent:
 
         return plans, list(dict.fromkeys(pending))
 
-    def coordinate(self, fan_request: dict, *, selector=None) -> dict:
+    def coordinate(
+        self,
+        fan_request: dict,
+        *,
+        selector=None,
+        review_budget: bool = False,
+    ) -> dict:
         """Run one fan request through Venue, Travel, Hotel and Fan agents.
 
         Returns a JSON-serializable result and a centralized ACL log.
@@ -344,6 +350,7 @@ class CoordinatorAgent:
         all_plans = []
         pending_reasons = []
         raw_results = []
+        review_baseline = None
 
         for round_no in range(
             1, self.max_negotiation_rounds + 1
@@ -362,6 +369,15 @@ class CoordinatorAgent:
             )
 
             round_plans = []
+
+            agent_request = fan_request
+            if review_budget and round_no > 1 and review_baseline:
+                agent_request = {
+                    **fan_request,
+                    "transport_budget_sar": fan_request["budget_sar"],
+                    "accommodation_budget_sar": fan_request["budget_sar"],
+                    "budget_review_round": True,
+                }
 
             for match_id in fan_request["preferred_match_ids"]:
 
@@ -414,7 +430,7 @@ class CoordinatorAgent:
                         travel_fn = round_trip_agent
 
                     travel_result = travel_fn(
-                        fan_request,
+                        agent_request,
                         match_info
                     )
 
@@ -461,7 +477,7 @@ class CoordinatorAgent:
                         hotel_fn = accommodation_agent
 
                     hotel_result = hotel_fn(
-                        fan_request,
+                        agent_request,
                         match_info,
                         request_type=(
                             "CFP" if round_no > 1 else "REQUEST"
@@ -500,6 +516,18 @@ class CoordinatorAgent:
                         travel_result,
                         hotel_result
                     )
+
+                    if review_budget and round_no > 1 and review_baseline:
+                        for plan in plans:
+                            plan["plan_id"] = f"ALT-{plan['plan_id']}"
+                        plans = [
+                            plan for plan in plans
+                            if (
+                                plan["transport_cost_sar"]
+                                != review_baseline["transport_cost_sar"]
+                                or plan["accommodation_cost_sar"]
+                                != review_baseline["accommodation_cost_sar"]
+                            )]
 
                     round_plans.extend(plans)
                     pending_reasons.extend(pending)
@@ -573,13 +601,65 @@ class CoordinatorAgent:
             status = decision.get("status")
 
             if status == "ACCEPT":
+                if review_budget and round_no == 1:
+                    review_baseline = next(
+                        (
+                            plan for plan in round_plans
+                            if plan["plan_id"] == decision.get("plan_id")
+                        ),
+                        None,
+                    )
+                    if review_baseline:
+                        continue
+
+                if review_baseline and round_no > 1 and (
+                    decision.get("total_cost_sar", float("inf"))
+                    >= review_baseline["ticket_price_sar"]
+                    + review_baseline["transport_cost_sar"]
+                    + review_baseline["accommodation_cost_sar"]
+                ):
+                    # Keep the original plan when the reviewed offers do not
+                    # lower its total; the alternative offers remain in logs.
+                    self._message(
+                        self.name,
+                        self.name,
+                        "INFORM",
+                        {
+                            "status": "BUDGET_REVIEW_COMPLETE",
+                            "selected_plan_id": review_baseline["plan_id"],
+                            "reviewed_plan_id": decision.get("plan_id"),
+                            "reviewed_total_sar": decision.get(
+                                "total_cost_sar"
+                            ),
+                            "baseline_total_sar": (
+                                review_baseline["ticket_price_sar"]
+                                + review_baseline["transport_cost_sar"]
+                                + review_baseline["accommodation_cost_sar"]
+                            ),
+                            "reason": "No lower-cost alternative was offered.",
+                        },
+                        fan_id,
+                    )
+                    break
+
                 self._message(
                     self.name,
                     self.name,
                     "INFORM",
                     {
                         "status": "ACCEPTED_SIMULATION_NOT_RESERVED",
-                        "plan_id": decision.get("plan_id")
+                        "plan_id": decision.get("plan_id"),
+                        "budget_review": (
+                            {
+                                "requested": True,
+                                "baseline_total_sar": review_baseline[
+                                    "ticket_price_sar"
+                                ] + review_baseline["transport_cost_sar"]
+                                + review_baseline["accommodation_cost_sar"],
+                                "alternative_found": True,
+                            }
+                            if review_baseline else None
+                        ),
                     },
                     fan_id
                 )
@@ -594,6 +674,23 @@ class CoordinatorAgent:
                         "rejected_plans", []
                     ),
                     "proposed_plans": all_plans,
+                    "budget_review": (
+                        {
+                            "requested": True,
+                            "baseline_plan_id": review_baseline["plan_id"],
+                            "baseline_total_sar": (
+                                review_baseline["ticket_price_sar"]
+                                + review_baseline["transport_cost_sar"]
+                                + review_baseline["accommodation_cost_sar"]
+                            ),
+                            "alternative_found": True,
+                            "alternative_plan_id": decision.get("plan_id"),
+                            "alternative_total_sar": decision.get(
+                                "total_cost_sar"
+                            ),
+                        }
+                        if review_baseline else None
+                    ),
                     "pending_reasons": list(
                         dict.fromkeys(pending_reasons)
                     ),
@@ -653,6 +750,48 @@ class CoordinatorAgent:
             }
 
         # All bounded rounds ended with a hard-constraint refusal.
+        if review_baseline:
+            baseline_total = (
+                review_baseline["ticket_price_sar"]
+                + review_baseline["transport_cost_sar"]
+                + review_baseline["accommodation_cost_sar"]
+            )
+            self._message(
+                self.name,
+                self.name,
+                "INFORM",
+                {
+                    "status": "ACCEPTED_SIMULATION_NOT_RESERVED",
+                    "plan_id": review_baseline["plan_id"],
+                    "budget_review": {
+                        "requested": True,
+                        "baseline_total_sar": baseline_total,
+                        "alternative_found": False,
+                    },
+                },
+                fan_id,
+            )
+            return {
+                "status": "ACCEPTED_SIMULATION_NOT_RESERVED",
+                "fan_decision": {
+                    "status": "ACCEPT",
+                    "plan_id": review_baseline["plan_id"],
+                    "total_cost_sar": baseline_total,
+                },
+                "eligible_plan_ids": [review_baseline["plan_id"]],
+                "rejected_plans": [],
+                "proposed_plans": all_plans,
+                "budget_review": {
+                    "requested": True,
+                    "baseline_plan_id": review_baseline["plan_id"],
+                    "baseline_total_sar": baseline_total,
+                    "alternative_found": False,
+                },
+                "pending_reasons": list(dict.fromkeys(pending_reasons)),
+                "message_log": self.message_log,
+                "agent_results": raw_results,
+            }
+
         return {
             "status": "REFUSED_NO_FEASIBLE_PLAN",
             "fan_decision": (
@@ -667,6 +806,19 @@ class CoordinatorAgent:
                 else []
             ),
             "proposed_plans": all_plans,
+            "budget_review": (
+                {
+                    "requested": True,
+                    "alternative_found": False,
+                    "best_available_total_sar": min(
+                        plan["ticket_price_sar"]
+                        + plan["transport_cost_sar"]
+                        + plan["accommodation_cost_sar"]
+                        for plan in all_plans
+                    ) if all_plans else None,
+                }
+                if review_budget else None
+            ),
             "pending_reasons": list(
                 dict.fromkeys(pending_reasons)
             ),
