@@ -46,10 +46,18 @@ from venue_data import list_matches
 class DemoPlanSelector:
     """Deterministic preference selector used when the Gemini key is absent."""
     def select(self, request, eligible_plans):
-        chosen = min(eligible_plans, key=lambda item: item["total_cost_sar"])
+        if request.get("priority") == "comfort":
+            chosen = max(
+                eligible_plans,
+                key=lambda item: (item["comfort_level"], -item["total_cost_sar"]),
+            )
+            reason = "Highest comfort among eligible plans, with cost as a tie-breaker."
+        else:
+            chosen = min(eligible_plans, key=lambda item: item["total_cost_sar"])
+            reason = "Lowest total cost among plans that passed the Fan Agent's constraints."
         return {
             "plan_id": chosen["plan_id"],
-            "reason": "Lowest total cost among plans that passed the Fan Agent's constraints.",
+            "reason": reason,
         }
 
 ROOT = Path(__file__).resolve().parent
@@ -122,9 +130,10 @@ class DemoHandler(SimpleHTTPRequestHandler):
             origin = str(request.get("origin_city", "")).strip()
             match_id = str(request.get("match_id", "")).strip().upper()
             budget = int(request.get("budget_sar", 0))
+            priority = str(request.get("priority", "lowest_cost"))
             allowed_origins = {"Jeddah", "Riyadh", "Dammam", "Abha"}
             matches = {m["match_id"] for m in list_matches()}
-            if origin not in allowed_origins or match_id not in matches or not 300 <= budget <= 100_000:
+            if origin not in allowed_origins or match_id not in matches or priority not in {"lowest_cost", "comfort"} or not 300 <= budget <= 100_000:
                 return self._send_json({"error": "تأكد من مدينة الانطلاق والمباراة والميزانية."}, 400)
 
             fan_request = {
@@ -132,7 +141,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 "origin_city": origin,
                 "budget_sar": budget,
                 "preferred_match_ids": [match_id],
-                "priority": "lowest_cost",
+                "priority": priority,
             }
             result = CoordinatorAgent().coordinate(fan_request, selector=DemoPlanSelector())
             match = next(m for m in list_matches() if m["match_id"] == match_id)
