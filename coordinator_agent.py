@@ -418,20 +418,31 @@ class CoordinatorAgent:
                         match_info
                     )
 
-                    self._message(
-                        "TravelAgent",
-                        self.name,
-                        "INFORM",
-                        {
-                            "status": travel_result.get("status"),
-                            "round_trip_count": len(
-                                travel_result.get(
-                                    "round_trip_options", []
+                    travel_replies = [
+                        msg for msg in travel_result.get(
+                            "acl_messages", []
+                        )
+                        if msg.get("sender") == "TravelAgent"
+                        and msg.get("receiver") == self.name
+                    ]
+                    if travel_replies:
+                        for msg in travel_replies:
+                            self._log(msg)
+                    else:
+                        self._message(
+                            "TravelAgent",
+                            self.name,
+                            "INFORM",
+                            {
+                                "status": travel_result.get("status"),
+                                "round_trip_count": len(
+                                    travel_result.get(
+                                        "round_trip_options", []
+                                    )
                                 )
-                            )
-                        },
-                        fan_id
-                    )
+                            },
+                            fan_id
+                        )
 
                     self._message(
                         self.name,
@@ -457,20 +468,31 @@ class CoordinatorAgent:
                         )
                     )
 
-                    self._message(
-                        "AccommodationAgent",
-                        self.name,
-                        "INFORM",
-                        {
-                            "status": hotel_result.get("status"),
-                            "option_count": len(
-                                hotel_result.get(
-                                    "accommodation_options", []
+                    hotel_replies = [
+                        msg for msg in hotel_result.get(
+                            "acl_messages", []
+                        )
+                        if msg.get("sender") == "AccommodationAgent"
+                        and msg.get("receiver") == self.name
+                    ]
+                    if hotel_replies:
+                        for msg in hotel_replies:
+                            self._log(msg)
+                    else:
+                        self._message(
+                            "AccommodationAgent",
+                            self.name,
+                            "INFORM",
+                            {
+                                "status": hotel_result.get("status"),
+                                "option_count": len(
+                                    hotel_result.get(
+                                        "accommodation_options", []
+                                    )
                                 )
-                            )
-                        },
-                        fan_id
-                    )
+                            },
+                            fan_id
+                        )
 
                     plans, pending = self._build_plans(
                         fan_request,
