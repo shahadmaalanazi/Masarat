@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+backup_final/
+masarat_inventory.db
+.env
+.env.*
+!.env.example
+*.py[cod]
