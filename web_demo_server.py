@@ -41,6 +41,7 @@ def install_optional_agent_fallbacks():
 install_optional_agent_fallbacks()
 from coordinator_agent import CoordinatorAgent
 from venue_data import list_matches
+from real_data import TRANSPORT_OPTIONS
 
 
 class DemoPlanSelector:
@@ -96,6 +97,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/matches":
+            origin_cities = sorted({route["origin"] for route in TRANSPORT_OPTIONS})
             matches = [
                 {
                     "match_id": item["match_id"],
@@ -106,7 +108,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 }
                 for item in list_matches()
             ]
-            return self._send_json({"matches": matches})
+            return self._send_json({"matches": matches, "origin_cities": origin_cities})
         if path == "/api/health":
             return self._send_json({"ok": True, "coordinator": "CoordinatorAgent"})
         return super().do_GET()
@@ -131,7 +133,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
             match_id = str(request.get("match_id", "")).strip().upper()
             budget = int(request.get("budget_sar", 0))
             priority = str(request.get("priority", "lowest_cost"))
-            allowed_origins = {"Jeddah", "Riyadh", "Dammam", "Abha"}
+            allowed_origins = {route["origin"] for route in TRANSPORT_OPTIONS}
             matches = {m["match_id"] for m in list_matches()}
             if origin not in allowed_origins or match_id not in matches or priority not in {"lowest_cost", "comfort"} or not 300 <= budget <= 100_000:
                 return self._send_json({"error": "تأكد من مدينة الانطلاق والمباراة والميزانية."}, 400)
