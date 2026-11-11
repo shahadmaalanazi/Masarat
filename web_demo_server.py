@@ -158,7 +158,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
 
 
 def serve():
-    host = os.getenv("HOST", "127.0.0.1")
+    host = os.getenv("HOST", "0.0.0.0" if os.getenv("PORT") else "127.0.0.1")
     port = int(os.getenv("PORT", "8765"))
     server = ThreadingHTTPServer((host, port), DemoHandler)
     print(f"Masaraat demo API ready at http://{host}:{port}")
