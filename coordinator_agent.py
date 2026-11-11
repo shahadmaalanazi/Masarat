@@ -295,6 +295,24 @@ class CoordinatorAgent:
 
                 "transport_cost_sar": float(transport_cost),
                 "accommodation_cost_sar": float(hotel_cost),
+                "transport_modes": list(dict.fromkeys(
+                    leg.get("mode")
+                    for leg in (go, back)
+                    if leg.get("mode")
+                )),
+                "transport_providers": list(dict.fromkeys(
+                    leg.get("provider")
+                    for leg in (go, back)
+                    if leg.get("provider")
+                )),
+                "transport_route": (
+                    f"{go.get('origin')} → {go.get('destination')}"
+                    if go.get("origin") and go.get("destination")
+                    else None
+                ),
+                "accommodation_name": hotel.get("name"),
+                "accommodation_room_type": hotel.get("room_type"),
+                "accommodation_city": hotel.get("city"),
                 "comfort_level": comfort,
 
                 "ticket_available": True,
@@ -581,16 +599,25 @@ class CoordinatorAgent:
                 fan_id
             )
 
+            selection_request = fan_request
+            if review_budget and round_no > 1:
+                # A budget review must rank viable alternatives by price even
+                # when the original request preferred a more comfortable trip.
+                selection_request = {
+                    **fan_request,
+                    "priority": "lowest_cost",
+                }
+
             try:
                 fan_result = self.fan_handler(
-                    fan_request,
+                    selection_request,
                     proposal,
                     selector=selector
                 )
 
             except TypeError:
                 fan_result = self.fan_handler(
-                    fan_request,
+                    selection_request,
                     proposal
                 )
 
