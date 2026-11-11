@@ -4,8 +4,6 @@
 
 **Live demo:** https://shahadmaalanazi.github.io/Masarat/
 
-> This is a prototype. Travel and accommodation prices are simulated and no booking is made.
-
 ## What the demo shows
 
 Five agents collaborate through the coordinator:
