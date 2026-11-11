@@ -209,7 +209,7 @@ def round_trip_agent(fan_request, match_info):
         messages = [create_acl_message(
             "CoordinatorAgent",
             "TravelAgent",
-            "CFP" if fan_request.get("budget_review_round") else "REQUEST",
+            "CFP" if fan_request.get("alternative_search_round") else "REQUEST",
             {
                 "origin": origin,
                 "destination": destination,
