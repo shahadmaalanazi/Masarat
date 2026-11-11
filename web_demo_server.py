@@ -40,6 +40,7 @@ def install_optional_agent_fallbacks():
 
 install_optional_agent_fallbacks()
 from coordinator_agent import CoordinatorAgent
+from venue_agent import estimate_ticket_price
 from venue_data import list_matches
 from real_data import TRANSPORT_OPTIONS
 
@@ -157,6 +158,8 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     "city": match["city"],
                     "date": match["date"],
                     "schedule_status": match.get("schedule_status", "UNKNOWN"),
+                    "ticket_estimate_sar": estimate_ticket_price(match_id),
+                    "ticket_price_type": "ESTIMATED_SIMULATED",
                 },
                 "plans": plans,
                 "messages": messages,
