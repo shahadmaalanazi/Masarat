@@ -121,7 +121,7 @@ class CoordinatorAgent:
             "match_datetime": match_dt,
             "travel_date": travel_day.isoformat(),
             "return_date": return_day.isoformat(),
-            "checkin_date": match_day.isoformat(),
+            "checkin_date": travel_day.isoformat(),
             "checkout_date": return_day.isoformat(),
             "origin_city": origin_city,
         }
@@ -829,6 +829,5 @@ class CoordinatorAgent:
 def run_coordinator(fan_request: dict, **kwargs) -> dict:
     """Convenience entry point for the demo app."""
     return CoordinatorAgent(**kwargs).coordinate(fan_request)
-
 
 
